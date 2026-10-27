@@ -1,0 +1,960 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0d6e8c">
+<title>Walk-in Count</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Barlow:wght@400;500;600&family=IBM+Plex+Mono:wght@500&display=swap">
+<script src="xlsx.full.min.js"></script>
+<style>
+/* Layout: one-column phone app. Sticky site bar on top, tab bar on the bottom, scrolling content between. */
+:root {
+  --bg: #eef1f3;
+  --surface: #ffffff;
+  --line: #d5dce1;
+  --fg: #17232b;
+  --muted: #5b6b75;
+  --accent: #0d6e8c;
+  --accent-fg: #ffffff;
+  --accent-soft: #dcecf1;
+  --flag: #b45c00;
+  --flag-soft: #fbead6;
+  --bad: #b3261e;
+  --bad-soft: #f9e0de;
+  --ok: #2e7d4f;
+  --display: "Barlow Condensed", "Arial Narrow", sans-serif;
+  --body: "Barlow", system-ui, -apple-system, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) { :root {
+  --bg: #0f1619; --surface: #172227; --line: #2a3a42; --fg: #e5ecef; --muted: #93a5ae;
+  --accent: #4fb3d1; --accent-fg: #06222c; --accent-soft: #163844;
+  --flag: #f0a04b; --flag-soft: #3a2a17; --bad: #f2867d; --bad-soft: #3b1d1b; --ok: #6cc595; color-scheme: dark } }
+
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body { background: var(--bg); color: var(--fg); font: 16px/1.4 var(--body); padding-top: env(safe-area-inset-top, 0px); -webkit-tap-highlight-color: transparent; }
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--surface); }
+.wrap { padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); max-width: 720px; margin: 0 auto; }
+button, input, select { font: inherit; color: inherit; }
+button { cursor: pointer; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+[hidden] { display: none !important; }
+
+header.sitebar { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: var(--surface); border-bottom: 1px solid var(--line); }
+.sitebar .wrap { display: flex; align-items: center; gap: 12px; padding-block: 10px; }
+.label { font: 600 11px/1 var(--body); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.site-pick { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; background: none; border: 0; padding: 0; text-align: left; }
+.site-pick .name { font: 700 24px/1.05 var(--display); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.site-pick .name::after { content: " ▾"; font-size: 16px; color: var(--muted); }
+.pill { font: 500 12px/1 var(--mono); padding: 6px 8px; border-radius: 999px; background: var(--accent-soft); color: var(--fg); white-space: nowrap; }
+
+main { padding-block: 16px 104px; }
+main > section { display: flex; flex-direction: column; gap: 16px; }
+h2 { font: 700 22px/1.1 var(--display); margin: 0; letter-spacing: .01em; text-wrap: balance; }
+h3 { font: 700 18px/1.1 var(--display); margin: 0; }
+.sub { color: var(--muted); margin: 4px 0 0; font-size: 15px; }
+.toolbar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.search, .txt { flex: 1 1 200px; min-width: 0; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
+select.sel { padding: 10px 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); max-width: 100%; }
+
+.btn { border: 1px solid var(--line); background: var(--surface); padding: 10px 14px; border-radius: 8px; font-weight: 600; }
+.btn.primary { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
+.btn.danger { color: var(--bad); }
+.btn.small { padding: 6px 10px; font-size: 14px; }
+.btn[disabled] { opacity: .5; cursor: not-allowed; }
+
+/* Count screen */
+.mic-panel { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 16px; display: flex; flex-direction: column; align-items: center; gap: 12px; text-align: center; }
+.mic { width: 132px; height: 132px; border-radius: 50%; border: 0; background: var(--accent); color: var(--accent-fg); display: grid; place-items: center; font: 700 18px/1.1 var(--display); letter-spacing: .04em; text-transform: uppercase; box-shadow: 0 0 0 0 var(--accent-soft); }
+.mic svg { width: 40px; height: 40px; display: block; margin: 0 auto 6px; }
+.mic.on { background: var(--bad); color: #fff; }
+@media (prefers-reduced-motion: no-preference) { .mic.on { animation: pulse 1.6s ease-out infinite; } @keyframes pulse { 0% { box-shadow: 0 0 0 0 var(--bad-soft); } 100% { box-shadow: 0 0 0 22px transparent; } } }
+.heard { min-height: 1.4em; font-size: 17px; color: var(--muted); max-width: 100%; overflow-wrap: anywhere; }
+.heard b { color: var(--fg); font-weight: 600; }
+.area-chip { display: inline-flex; gap: 6px; align-items: center; font-size: 14px; }
+.hint { font-size: 13px; color: var(--muted); }
+.hint code { font-family: var(--mono); font-size: 12px; background: var(--accent-soft); padding: 1px 4px; border-radius: 4px; }
+
+.list { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.entry { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 3px 12px; padding: 10px 12px; border-top: 1px solid var(--line); width: 100%; background: none; border-left: 0; border-right: 0; border-bottom: 0; text-align: left; }
+.entry:first-child { border-top: 0; }
+.entry .item { font-weight: 600; min-width: 0; overflow-wrap: anywhere; }
+.entry .item.none { color: var(--bad); }
+.entry .said { grid-column: 1; color: var(--muted); font-size: 13px; overflow-wrap: anywhere; }
+.entry .q { grid-row: 1 / span 2; grid-column: 2; align-self: center; font: 500 16px var(--mono); text-align: right; font-variant-numeric: tabular-nums; }
+.entry .tags { grid-column: 1 / -1; display: flex; gap: 6px; flex-wrap: wrap; }
+.tag { font: 600 11px/1 var(--body); letter-spacing: .05em; text-transform: uppercase; padding: 4px 6px; border-radius: 4px; }
+.tag.flag { background: var(--flag-soft); color: var(--flag); }
+.tag.bad { background: var(--bad-soft); color: var(--bad); }
+.tag.ok { background: var(--accent-soft); color: var(--ok); }
+.empty { text-align: center; padding: 24px 12px; color: var(--muted); }
+.more { padding: 12px; text-align: center; color: var(--muted); font-size: 14px; border-top: 1px solid var(--line); }
+
+/* Worksheet rows */
+.row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 12px; padding: 10px 12px; border-top: 1px solid var(--line); }
+.row:first-child { border-top: 0; }
+.row .desc { font-weight: 500; min-width: 0; overflow-wrap: anywhere; }
+.row .meta { grid-column: 1; color: var(--muted); font-size: 13px; display: flex; gap: 10px; flex-wrap: wrap; }
+.mono { font-family: var(--mono); }
+.row .qty { grid-row: 1 / span 2; grid-column: 2; align-self: center; font: 500 15px var(--mono); color: var(--muted); text-align: right; font-variant-numeric: tabular-nums; }
+.row .qty.filled { color: var(--fg); }
+
+.stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.stat { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; }
+.stat b { display: block; font: 700 26px/1 var(--display); font-variant-numeric: tabular-nums; }
+.stat span { font-size: 12px; color: var(--muted); }
+.stat.warn b { color: var(--flag); }
+
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 14px; display: flex; flex-direction: column; gap: 10px; }
+.site-card { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 12px; align-items: center; }
+.site-card.active { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+.site-card .nm { font: 700 20px/1.1 var(--display); overflow-wrap: anywhere; }
+.site-card .info { grid-column: 1 / -1; color: var(--muted); font-size: 13px; }
+.site-card .acts { grid-column: 1 / -1; display: flex; gap: 8px; flex-wrap: wrap; }
+.badge-active { font: 600 11px/1 var(--body); letter-spacing: .06em; text-transform: uppercase; color: var(--accent); }
+.field { display: flex; flex-direction: column; gap: 6px; }
+.field label { font-size: 13px; font-weight: 600; color: var(--muted); }
+.field input[type=text], .field input[type=number] { padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); }
+.drop { border: 2px dashed var(--line); border-radius: 10px; padding: 18px; text-align: center; color: var(--muted); }
+.drop input { display: block; margin: 10px auto 0; max-width: 100%; }
+.check { font-size: 14px; display: flex; flex-direction: column; gap: 4px; }
+.ok-t { color: var(--ok); } .err-t { color: var(--bad); }
+.note { background: var(--accent-soft); border-radius: 8px; padding: 10px 12px; font-size: 14px; }
+.note.warn { background: var(--flag-soft); }
+
+/* Review */
+.rv { background: var(--surface); border: 1px solid var(--line); border-left: 4px solid var(--flag); border-radius: 10px; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+.rv.bad { border-left-color: var(--bad); }
+.rv .why { font-size: 14px; color: var(--muted); }
+.rv .acts { display: flex; gap: 8px; flex-wrap: wrap; }
+
+/* Bottom sheet */
+.sheet-back { position: fixed; inset: 0; background: rgb(0 0 0 / .4); z-index: 20; display: flex; align-items: flex-end; justify-content: center; }
+.sheet { background: var(--surface); width: 100%; max-width: 720px; border-radius: 14px 14px 0 0; padding: 16px max(16px, env(safe-area-inset-right, 0px)) calc(16px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); max-height: 88%; overflow: auto; display: flex; flex-direction: column; gap: 10px; }
+.opt { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 12px; align-items: center; padding: 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); text-align: left; width: 100%; }
+.opt.on { border-color: var(--accent); background: var(--accent-soft); }
+.opt .d { font-weight: 600; overflow-wrap: anywhere; }
+.opt .m { grid-column: 1; font-size: 13px; color: var(--muted); display: flex; gap: 8px; flex-wrap: wrap; }
+.opt .r { grid-column: 2; grid-row: 1 / span 2; font: 500 13px var(--mono); color: var(--muted); }
+.qtyrow { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.stepper { display: flex; align-items: center; gap: 6px; }
+.stepper button { width: 40px; height: 40px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); font-size: 20px; line-height: 1; }
+.stepper input { width: 100%; min-width: 0; text-align: center; padding: 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); font: 500 18px var(--mono); }
+
+nav.tabs { position: fixed; left: 0; right: 0; bottom: 0; z-index: 6; background: var(--surface); border-top: 1px solid var(--line); padding-bottom: env(safe-area-inset-bottom, 0px); }
+nav.tabs .wrap { display: grid; grid-template-columns: repeat(4, 1fr); }
+nav.tabs button { position: relative; background: none; border: 0; padding: 14px 4px; font: 600 13px/1 var(--body); letter-spacing: .04em; text-transform: uppercase; color: var(--muted); border-top: 3px solid transparent; }
+nav.tabs button[aria-current="page"] { color: var(--accent); border-top-color: var(--accent); }
+nav.tabs .count { display: inline-block; min-width: 18px; padding: 2px 5px; margin-left: 4px; border-radius: 999px; background: var(--flag); color: var(--surface); font: 600 11px/1.2 var(--body); }
+.toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(76px + env(safe-area-inset-bottom, 0px)); background: var(--fg); color: var(--bg); padding: 10px 14px; border-radius: 8px; z-index: 30; font-size: 14px; max-width: calc(100% - 32px); }
+</style>
+</head>
+<body>
+
+<header class="sitebar">
+  <div class="wrap">
+    <button class="site-pick" id="sitePick" aria-label="Switch site">
+      <span class="label">Counting site</span>
+      <span class="name" id="siteName">Loading…</span>
+    </button>
+    <span class="pill" id="sitePill" hidden></span>
+  </div>
+</header>
+
+<main class="wrap">
+  <!-- COUNT -->
+  <section id="view-count">
+    <div class="mic-panel">
+      <button class="mic" id="mic" aria-pressed="false">
+        <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v4M8 22h8"/></svg><span id="micLabel">Start</span></span>
+      </button>
+      <div class="heard" id="heard" aria-live="polite">Tap Start, then say each item and its count.</div>
+      <div class="area-chip"><span class="label">Area</span><select class="sel" id="countArea" aria-label="Current storage area"><option value="">Any area</option></select></div>
+      <div class="hint" id="micHint">Say <code>egg patty 4 cases</code>, <code>oranges 2 cases 6 each</code>, or <code>area frozen</code>. Say <code>scratch that</code> to remove the last one.</div>
+    </div>
+    <form class="toolbar" id="typeForm">
+      <input class="txt" id="typeIn" type="text" placeholder="Or type: meatballs 3 cases" aria-label="Type a count" autocomplete="off">
+      <button class="btn" type="submit">Add</button>
+    </form>
+    <div>
+      <div class="toolbar" style="justify-content:space-between"><h2>Counted so far</h2><span class="pill" id="entryPill">0 entries</span></div>
+    </div>
+    <div class="list" id="entries"></div>
+  </section>
+
+  <!-- REVIEW -->
+  <section id="view-review" hidden>
+    <div>
+      <h2>Review</h2>
+      <p class="sub">Fix anything flagged, then export the worksheet for upload.</p>
+    </div>
+    <div class="stats">
+      <div class="stat"><b id="rvCounted">0</b><span>rows counted</span></div>
+      <div class="stat warn"><b id="rvFlags">0</b><span>need a look</span></div>
+      <div class="stat"><b id="rvRows">0</b><span>rows in sheet</span></div>
+    </div>
+    <div class="card">
+      <h3>Export for upload</h3>
+      <p class="sub" style="margin:0" id="exportNote">Fills Quantity and Break Quantity into this site's worksheet. Every other column and the row order stay exactly as uploaded.</p>
+      <div class="toolbar"><button class="btn primary" id="exportBtn">Export .xlsx</button></div>
+    </div>
+    <div id="rvList" style="display:flex;flex-direction:column;gap:10px"></div>
+  </section>
+
+  <!-- WORKSHEET -->
+  <section id="view-sheet" hidden>
+    <div>
+      <h2>Worksheet</h2>
+      <p class="sub" id="sheetSub">Every row from the site's upload file, in its original order.</p>
+    </div>
+    <div class="stats" id="stats">
+      <div class="stat"><b id="stRows">0</b><span>rows</span></div>
+      <div class="stat"><b id="stRepeat">0</b><span>items in 2+ slots</span></div>
+      <div class="stat"><b id="stFilled">0</b><span>rows counted</span></div>
+    </div>
+    <div class="toolbar">
+      <input class="search" id="q" type="search" placeholder="Search item, code or brand" aria-label="Search worksheet">
+      <select class="sel" id="area" aria-label="Filter by location"><option value="">All locations</option></select>
+    </div>
+    <label class="sub" style="display:flex;gap:8px;align-items:center;margin:0"><input type="checkbox" id="onlyRepeat"> Only items in more than one slot</label>
+    <label class="sub" style="display:flex;gap:8px;align-items:center;margin:0"><input type="checkbox" id="onlyUncounted"> Only rows not counted yet</label>
+    <div class="list" id="rows"></div>
+  </section>
+
+  <!-- SITES -->
+  <section id="view-sites" hidden>
+    <div>
+      <h2>Sites</h2>
+      <p class="sub">Each site keeps its own upload worksheet and its own count. Everything is saved on this phone.</p>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:12px" id="siteList"></div>
+    <div class="card" id="uploadCard">
+      <h2 id="upTitle">Add a site</h2>
+      <div class="field" id="nameField">
+        <label for="newName">Site name</label>
+        <input type="text" id="newName" placeholder="e.g. Beacon Street Building">
+      </div>
+      <div class="drop">
+        Upload the site's inventory worksheet (.xlsx or .csv)
+        <input type="file" id="file" accept=".xlsx,.xls,.csv">
+      </div>
+      <div class="check" id="fileCheck" hidden></div>
+      <div class="toolbar">
+        <button class="btn primary" id="saveSite" disabled>Save site</button>
+        <button class="btn" id="cancelReplace" hidden>Cancel</button>
+      </div>
+    </div>
+  </section>
+</main>
+
+<nav class="tabs" aria-label="Sections">
+  <div class="wrap">
+    <button data-view="count" aria-current="page">Count</button>
+    <button data-view="review">Review<span class="count" id="tabFlags" hidden>0</span></button>
+    <button data-view="sheet">Sheet</button>
+    <button data-view="sites">Sites</button>
+  </div>
+</nav>
+
+<!-- Core logic: parsing spoken counts and matching them to worksheet rows. No DOM access here. -->
+<script id="core">
+const Core = (() => {
+  const HIGH_CASES = 3;
+  const ONES = { zero: 0, oh: 0, one: 1, won: 1, two: 2, to: 2, too: 2, three: 3, four: 4, for: 4, fore: 4, five: 5, six: 6, seven: 7, eight: 8, ate: 8, nine: 9, ten: 10, eleven: 11, twelve: 12, thirteen: 13, fourteen: 14, fifteen: 15, sixteen: 16, seventeen: 17, eighteen: 18, nineteen: 19 };
+  const TENS = { twenty: 20, thirty: 30, forty: 40, fifty: 50, sixty: 60, seventy: 70, eighty: 80, ninety: 90 };
+  // Homophones only count as numbers right before a unit word ("egg patty for cases").
+  const SOUNDALIKE = new Set(["oh", "won", "to", "too", "for", "fore", "ate"]);
+  const CASE_UNITS = new Set(["case", "cases", "cs", "box", "boxes", "carton", "cartons", "flat", "flats"]);
+  const EACH_UNITS = new Set(["each", "eaches", "ea", "piece", "pieces", "unit", "units", "single", "singles", "loose", "bag", "bags", "can", "cans", "bottle", "bottles", "pack", "packs"]);
+  const SEPARATORS = new Set(["next", "then", "and", "comma", "period", "okay", "ok"]);
+  const STOP = new Set(["of", "the", "a", "an", "we", "have", "got", "there", "is", "are", "um", "uh", "like", "about", "with", "in", "on", "at"]);
+
+  const norm = (s) => String(s ?? "").toLowerCase().replace(/\s+/g, " ").trim();
+  const tokenize = (s) => norm(s).replace(/(\d)([a-z])/g, "$1 $2").replace(/[^a-z0-9.\s]/g, " ").split(/\s+/).filter(Boolean);
+  const stem = (w) => w.length > 4 && w.endsWith("ies") ? w.slice(0, -3) + "y" : w.length > 3 && w.endsWith("es") && /(ch|sh|x|ss|o)es$/.test(w) ? w.slice(0, -2) : w.length > 3 && w.endsWith("s") && !w.endsWith("ss") ? w.slice(0, -1) : w;
+  const unitOf = (w) => CASE_UNITS.has(w) ? "cs" : EACH_UNITS.has(w) ? "ea" : null;
+
+  // Read a number starting at tokens[i]; returns {n, len} or null.
+  function readNumber(t, i) {
+    const w = t[i];
+    if (/^\d+(\.\d+)?$/.test(w)) return { n: parseFloat(w), len: 1 };
+    if (w === "half" || (w === "a" && t[i + 1] === "half")) return { n: 0.5, len: w === "a" ? 2 : 1 };
+    if (w in TENS) {
+      const nx = t[i + 1];
+      if (nx in ONES && ONES[nx] > 0 && ONES[nx] < 10 && !SOUNDALIKE.has(nx)) return { n: TENS[w] + ONES[nx], len: 2 };
+      return { n: TENS[w], len: 1 };
+    }
+    if (w in ONES) {
+      if (SOUNDALIKE.has(w) && !unitOf(t[i + 1] || "")) return null;
+      return { n: ONES[w], len: 1 };
+    }
+    if (w === "hundred") return { n: 100, len: 1 };
+    return null;
+  }
+
+  // Turn one finished stretch of speech into commands and count lines.
+  function parse(text) {
+    const t = tokenize(text);
+    const out = [];
+    const joined = t.join(" ");
+    if (/^(scratch|delete|remove|undo|cancel)( that| last( one)?| it)?$/.test(joined)) return [{ type: "undo" }];
+    let cur = null;
+    const flush = () => { if (cur && cur.words.length) out.push(cur); cur = null; };
+    const fresh = () => ({ type: "count", words: [], cs: null, ea: null, hasQty: false });
+    for (let i = 0; i < t.length; i++) {
+      const w = t[i];
+      if (w === "area" || w === "location" || w === "section") {
+        flush(); out.push({ type: "area", words: t.slice(i + 1).filter((x) => !SEPARATORS.has(x)) }); return out;
+      }
+      if (SEPARATORS.has(w)) { if (cur && cur.hasQty) flush(); continue; }
+      const num = readNumber(t, i);
+      if (num) {
+        i += num.len - 1;
+        let unit = unitOf(t[i + 1] || "");
+        if (unit) i++; else unit = "cs";
+        // "egg patty 4 cases 3 each": a number with no new words belongs to the line before it.
+        let target = cur && cur.words.length ? cur : null;
+        if (!target) { const last = out[out.length - 1]; if (last && last.type === "count") target = last; }
+        if (!target) continue;
+        target[unit] = (target[unit] || 0) + num.n;
+        target.hasQty = true;
+        continue;
+      }
+      if (unitOf(w)) continue;
+      if (cur && cur.hasQty) flush();
+      if (!cur) cur = fresh();
+      if (!STOP.has(w)) cur.words.push(w);
+    }
+    flush();
+    return out.map((o) => { if (o.type === "count") { o.spoken = o.words.join(" "); delete o.hasQty; } return o; });
+  }
+
+  function lev1(a, b) { // true when edit distance <= 1
+    if (Math.abs(a.length - b.length) > 1) return false;
+    let i = 0, j = 0, e = 0;
+    while (i < a.length && j < b.length) {
+      if (a[i] === b[j]) { i++; j++; continue; }
+      if (++e > 1) return false;
+      if (a.length > b.length) i++; else if (b.length > a.length) j++; else { i++; j++; }
+    }
+    return e + (a.length - i) + (b.length - j) <= 1;
+  }
+  function tokScore(s, d) {
+    if (s === d) return 1;
+    if (s.length >= 3 && d.startsWith(s)) return 0.85;
+    if (d.length >= 3 && s.startsWith(d)) return 0.75;
+    if (s.length >= 4 && d.length >= 4 && lev1(s, d)) return 0.7;
+    return 0;
+  }
+
+  // Index one site's worksheet: unique descriptions with their row numbers.
+  function buildIndex(headers, rows) {
+    const col = (name) => headers.findIndex((h) => norm(h).replace(/\s*\*$/, "") === norm(name));
+    const ix = { desc: col("Item Description"), cust: col("Cust #"), dist: col("Dist #"), qty: col("Quantity"), bqty: col("Break Quantity"),
+      uom: col("UOM"), buom: col("Break Uom"), loc: col("Location"), area: col("Area"), brand: col("Brand"), vendor: col("Distributor"), price: col("Price"), pack: col("Units Per Case") };
+    const items = new Map();
+    rows.forEach((r, i) => {
+      const key = norm(r[ix.desc]);
+      if (!key) return;
+      if (!items.has(key)) {
+        const toks = [...new Set(tokenize(r[ix.desc]).map(stem).filter((x) => !/^\d+$/.test(x) && x.length > 1))];
+        items.set(key, { key, label: r[ix.desc], toks, rows: [] });
+      }
+      items.get(key).rows.push(i);
+    });
+    return { ix, items: [...items.values()] };
+  }
+
+  // Score spoken words against every item. Returns best matches, highest first.
+  function match(index, rows, words, area) {
+    const sp = words.map(stem).filter((w) => !STOP.has(w) && w.length > 1);
+    if (!sp.length) return [];
+    const res = [];
+    for (const it of index.items) {
+      let hit = 0, used = 0;
+      for (const s of sp) {
+        let best = 0;
+        for (const d of it.toks) { const v = tokScore(s, d); if (v > best) best = v; if (best === 1) break; }
+        hit += best; if (best > 0) used++;
+      }
+      if (!used) continue;
+      let score = hit / sp.length;                                   // how much of what was said is in the name
+      score = score * 0.8 + (used / Math.max(it.toks.length, 1)) * 0.2; // how much of the name was said
+      if (area && it.rows.some((r) => norm(rows[r][index.ix.loc]) === norm(area))) score += 0.08;
+      res.push({ key: it.key, label: it.label, rows: it.rows, score: Math.min(1, +score.toFixed(3)) });
+    }
+    return res.sort((a, b) => b.score - a.score).slice(0, 6);
+  }
+
+  // What needs a person to look at an entry.
+  function flags(e, index) {
+    const f = [];
+    if (!e.key) f.push("unmatched");
+    else {
+      const it = index && index.items.find((x) => x.key === e.key);
+      if (it && it.rows.length > 1 && e.row == null) f.push("slot");
+      if (!e.itemOk && e.score != null && (e.score < 0.6 || e.close)) f.push("check");
+    }
+    if (e.cs == null && e.ea == null) f.push("noqty");
+    if ((e.cs || 0) > HIGH_CASES && !e.highOk) f.push("high");
+    return f;
+  }
+
+  return { parse, match, buildIndex, flags, norm, tokenize, HIGH_CASES };
+})();
+if (typeof module !== "undefined") module.exports = Core;
+</script>
+
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const { norm } = Core;
+  const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+  const fmt = (n) => (n == null ? "" : Number.isInteger(n) ? String(n) : String(+n.toFixed(2)));
+  function toast(msg) { const t = el("div", "toast", msg); t.setAttribute("role", "status"); document.body.appendChild(t); setTimeout(() => t.remove(), 2600); }
+  const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+
+  // ---------- storage on this phone (IndexedDB, with in-memory fallback) ----------
+  const mem = new Map();
+  const idb = (() => {
+    let dbp = null;
+    function open() {
+      if (dbp) return dbp;
+      dbp = new Promise((res, rej) => {
+        try { const r = indexedDB.open("walk-in-count", 1); r.onupgradeneeded = () => r.result.createObjectStore("kv"); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); }
+        catch (e) { rej(e); }
+      });
+      return dbp;
+    }
+    async function tx(mode, fn) { const db = await open(); return new Promise((res, rej) => { const t = db.transaction("kv", mode); const s = t.objectStore("kv"); const r = fn(s); t.oncomplete = () => res(r && r.result); t.onerror = () => rej(t.error); }); }
+    return {
+      async get(k) { try { return await tx("readonly", (s) => s.get(k)); } catch { return mem.get(k); } },
+      async set(k, v) { mem.set(k, v); try { await tx("readwrite", (s) => s.put(v, k)); } catch { warnStorage(); } },
+      async del(k) { mem.delete(k); try { await tx("readwrite", (s) => s.delete(k)); } catch {} },
+    };
+  })();
+  let warned = false;
+  function warnStorage() { if (!warned) { warned = true; toast("This browser isn't saving data. Counts will be lost if you close the page."); } }
+  try { navigator.storage && navigator.storage.persist && navigator.storage.persist(); } catch {}
+  const pref = { get(k) { try { return localStorage.getItem(k); } catch { return null; } }, set(k, v) { try { localStorage.setItem(k, v); } catch {} } };
+
+  // ---------- state ----------
+  let sites = [];          // [{id, name, fileName, rowCount, uploadedAt}]
+  let activeId = pref.get("activeSite");
+  let sheet = null;        // {id, headers, rows, index, repeats}
+  let entries = [];        // this site's count lines, newest last
+  let countArea = "";
+
+  const activeSite = () => sites.find((s) => s.id === activeId) || null;
+  const saveSites = () => idb.set("sites", sites);
+  let saveT; function saveEntries() { clearTimeout(saveT); const id = activeId, data = entries.slice(); saveT = setTimeout(() => idb.set("counts:" + id, data), 150); }
+
+  // ---------- navigation ----------
+  function show(view) {
+    for (const s of document.querySelectorAll("main > section")) s.hidden = s.id !== "view-" + view;
+    for (const b of document.querySelectorAll("nav.tabs button")) { if (b.dataset.view === view) b.setAttribute("aria-current", "page"); else b.removeAttribute("aria-current"); }
+    pref.set("view", view);
+    if (view === "review") renderReview();
+    if (view === "sheet") renderRows();
+    window.scrollTo(0, 0);
+  }
+  document.querySelectorAll("nav.tabs button").forEach((b) => b.addEventListener("click", () => show(b.dataset.view)));
+
+  // ---------- header + switcher ----------
+  function renderHeader() {
+    const s = activeSite();
+    $("siteName").textContent = s ? s.name : sites.length ? "Pick a site" : "No sites yet";
+    $("sitePill").hidden = !s; if (s) $("sitePill").textContent = s.rowCount.toLocaleString() + " rows";
+  }
+  function openSheet(title, build) {
+    const back = el("div", "sheet-back"), sh = el("div", "sheet");
+    sh.setAttribute("role", "dialog"); sh.setAttribute("aria-label", title);
+    const close = () => back.remove();
+    build(sh, close);
+    back.appendChild(sh);
+    back.addEventListener("click", (e) => { if (e.target === back) close(); });
+    document.body.appendChild(back);
+    const f = sh.querySelector("button, input"); if (f) f.focus();
+    return close;
+  }
+  $("sitePick").addEventListener("click", () => {
+    if (!sites.length) { show("sites"); return; }
+    openSheet("Switch site", (sh, close) => {
+      sh.appendChild(el("h2", null, "Switch site"));
+      for (const s of sites) {
+        const b = el("button", "opt" + (s.id === activeId ? " on" : ""));
+        b.append(el("span", "d", s.name), el("span", "r", s.rowCount.toLocaleString() + " rows"));
+        b.onclick = () => { close(); setActive(s.id); };
+        sh.appendChild(b);
+      }
+      const add = el("button", "btn", "Add or manage sites"); add.onclick = () => { close(); show("sites"); }; sh.appendChild(add);
+    });
+  });
+  async function setActive(id) {
+    if (listening) stopMic();
+    activeId = id; pref.set("activeSite", id);
+    await loadSite();
+    renderAll();
+  }
+  async function loadSite() {
+    const s = activeSite(); sheet = null; entries = [];
+    if (!s) return;
+    const data = await idb.get("site:" + s.id);
+    if (!data) return;
+    const index = Core.buildIndex(data.headers, data.rows);
+    const repeats = new Map(index.items.map((it) => [it.key, it.rows.length]));
+    sheet = { id: s.id, headers: data.headers, rows: data.rows, index, repeats };
+    entries = (await idb.get("counts:" + s.id)) || [];
+    const locs = [...new Set(data.rows.map((r) => r[index.ix.loc]).filter(Boolean))].sort();
+    for (const selId of ["area", "countArea"]) {
+      const sel = $(selId); sel.replaceChildren();
+      const all = el("option", null, selId === "area" ? "All locations" : "Any area"); all.value = ""; sel.appendChild(all);
+      locs.forEach((l) => { const o = el("option", null, l); o.value = l; sel.appendChild(o); });
+    }
+    countArea = ""; $("countArea").value = "";
+  }
+
+  // ---------- counting ----------
+  function totals() { // row -> {cs, ea}
+    const m = new Map();
+    for (const e of entries) {
+      if (e.row == null) continue;
+      const t = m.get(e.row) || { cs: 0, ea: 0, hasCs: false, hasEa: false };
+      if (e.cs != null) { t.cs += e.cs; t.hasCs = true; }
+      if (e.ea != null) { t.ea += e.ea; t.hasEa = true; }
+      m.set(e.row, t);
+    }
+    return m;
+  }
+  function addSpoken(text, source) {
+    if (!sheet) { toast("Add a site with its worksheet first."); show("sites"); return; }
+    const cmds = Core.parse(text);
+    if (!cmds.length) return;
+    for (const c of cmds) {
+      if (c.type === "undo") {
+        const last = entries.pop();
+        if (last) { toast("Removed: " + (last.label || last.spoken)); buzz([20, 60, 20]); } else toast("Nothing to remove.");
+        continue;
+      }
+      if (c.type === "area") {
+        const want = c.words.join(" ");
+        const opts = [...$("countArea").options].map((o) => o.value).filter(Boolean);
+        const hit = opts.find((o) => norm(o) === want) || opts.find((o) => norm(o).startsWith(want) || want.startsWith(norm(o)));
+        if (hit) { countArea = hit; $("countArea").value = hit; toast("Area: " + hit); } else toast(`No area called “${want}” in this worksheet.`);
+        continue;
+      }
+      const cand = Core.match(sheet.index, sheet.rows, c.words, countArea);
+      const top = cand[0];
+      const e = { id: uid(), t: Date.now(), heard: text.trim(), spoken: c.spoken, cs: c.cs, ea: c.ea, source,
+        key: top && top.score >= 0.45 ? top.key : null, label: top && top.score >= 0.45 ? top.label : null,
+        score: top ? top.score : null, close: !!(cand[1] && top && cand[1].score >= top.score - 0.08),
+        row: null, area: countArea };
+      if (e.key) e.row = pickRow(top.rows);
+      entries.push(e);
+      buzz(Core.flags(e, sheet.index).length ? [40, 50, 40] : 30);
+    }
+    saveEntries(); renderEntries(); renderBadges();
+  }
+  function pickRow(rows) {
+    if (rows.length === 1) return rows[0];
+    // Same item in several slots: only auto-assign when exactly one slot is in the current area.
+    if (countArea) { const inArea = rows.filter((r) => norm(sheet.rows[r][sheet.index.ix.loc]) === norm(countArea)); if (inArea.length === 1) return null; }
+    return null;
+  }
+  function buzz(p) { try { navigator.vibrate && navigator.vibrate(p); } catch {} }
+
+  const FLAG_TEXT = { unmatched: "No match", slot: "Pick slot", check: "Check item", noqty: "No count", high: "Over 3 cases" };
+  function qtyText(e) {
+    const parts = [];
+    if (e.cs != null) parts.push(fmt(e.cs) + " cs");
+    if (e.ea != null) parts.push(fmt(e.ea) + " ea");
+    return parts.join(" · ") || "—";
+  }
+  function entryButton(e) {
+    const b = el("button", "entry");
+    b.appendChild(el("span", "item" + (e.key ? "" : " none"), e.label || "No match for “" + e.spoken + "”"));
+    b.appendChild(el("span", "q", qtyText(e)));
+    const said = el("span", "said", "Heard: “" + e.heard + "”");
+    if (e.row != null) said.textContent += " · row " + (e.row + 2);
+    b.appendChild(said);
+    const f = Core.flags(e, sheet.index);
+    if (f.length) { const tg = el("span", "tags"); f.forEach((x) => tg.appendChild(el("span", "tag " + (x === "unmatched" || x === "noqty" ? "bad" : "flag"), FLAG_TEXT[x]))); b.appendChild(tg); }
+    b.onclick = () => editEntry(e);
+    return b;
+  }
+  function renderEntries() {
+    const box = $("entries"); box.replaceChildren();
+    $("entryPill").textContent = entries.length + (entries.length === 1 ? " entry" : " entries");
+    if (!sheet) { box.appendChild(el("div", "empty", "Add a site and its worksheet on the Sites tab to start counting.")); return; }
+    if (!entries.length) { box.appendChild(el("div", "empty", "Nothing counted yet at this site. Tap Start and say the first item.")); return; }
+    const recent = entries.slice().reverse();
+    recent.slice(0, 60).forEach((e) => box.appendChild(entryButton(e)));
+    if (recent.length > 60) box.appendChild(el("div", "more", `Showing the latest 60 of ${recent.length}. All of them are on the Review and Sheet tabs.`));
+  }
+
+  // ---------- entry editor ----------
+  function rowMeta(r) {
+    const ix = sheet.index.ix, row = sheet.rows[r], m = el("span", "m");
+    m.appendChild(el("span", null, "Row " + (r + 2)));
+    if (ix.cust >= 0 && row[ix.cust]) m.appendChild(el("span", "mono", "#" + row[ix.cust]));
+    if (ix.dist >= 0 && row[ix.dist]) m.appendChild(el("span", "mono", "Dist " + row[ix.dist]));
+    if (ix.loc >= 0 && row[ix.loc]) m.appendChild(el("span", null, row[ix.loc]));
+    if (ix.vendor >= 0 && row[ix.vendor]) m.appendChild(el("span", null, row[ix.vendor]));
+    if (ix.brand >= 0 && row[ix.brand]) m.appendChild(el("span", null, row[ix.brand]));
+    if (ix.price >= 0 && row[ix.price]) m.appendChild(el("span", "mono", row[ix.price]));
+    return m;
+  }
+  function stepper(id, label, val) {
+    const f = el("div", "field"); const lb = el("label", null, label); lb.htmlFor = id;
+    const s = el("div", "stepper"); const minus = el("button", null, "−"); const plus = el("button", null, "+");
+    minus.type = plus.type = "button"; minus.setAttribute("aria-label", "Less " + label); plus.setAttribute("aria-label", "More " + label);
+    const inp = el("input"); inp.id = id; inp.type = "number"; inp.inputMode = "decimal"; inp.min = "0"; inp.step = "any"; inp.value = val == null ? "" : fmt(val);
+    minus.onclick = () => { inp.value = Math.max(0, (parseFloat(inp.value) || 0) - 1); };
+    plus.onclick = () => { inp.value = (parseFloat(inp.value) || 0) + 1; };
+    s.append(minus, inp, plus); f.append(lb, s); return { f, inp };
+  }
+  function editEntry(e, opts = {}) {
+    let key = e.key, label = e.label, row = e.row;
+    openSheet("Edit count", (sh, close) => {
+      const draw = () => {
+        sh.replaceChildren();
+        sh.appendChild(el("h2", null, label || "Choose the item"));
+        sh.appendChild(el("p", "sub", "Heard: “" + e.heard + "”"));
+        // item choice
+        const it = key && sheet.index.items.find((x) => x.key === key);
+        if (!it || opts.changeItem) {
+          const inp = el("input", "search"); inp.type = "search"; inp.placeholder = "Search the worksheet"; inp.value = e.spoken || ""; inp.id = "itemSearch";
+          inp.setAttribute("aria-label", "Search the worksheet");
+          const res = el("div"); res.style.cssText = "display:flex;flex-direction:column;gap:8px";
+          const run = () => {
+            res.replaceChildren();
+            const cand = Core.match(sheet.index, sheet.rows, Core.tokenize(inp.value), countArea || e.area);
+            if (!cand.length) res.appendChild(el("div", "empty", "No items match. Try fewer or different words."));
+            cand.forEach((c) => {
+              const b = el("button", "opt"); b.append(el("span", "d", c.label), el("span", "r", c.rows.length > 1 ? c.rows.length + " slots" : "1 slot"));
+              b.onclick = () => { key = c.key; label = c.label; row = c.rows.length === 1 ? c.rows[0] : null; opts.changeItem = false; draw(); };
+              res.appendChild(b);
+            });
+          };
+          inp.addEventListener("input", run); run();
+          sh.append(inp, res);
+        } else {
+          const ch = el("button", "btn small", "Change item"); ch.type = "button"; ch.onclick = () => { opts.changeItem = true; draw(); };
+          sh.appendChild(ch);
+          if (it.rows.length > 1) {
+            sh.appendChild(el("h3", null, "Which slot gets this count?"));
+            it.rows.forEach((r) => {
+              const b = el("button", "opt" + (row === r ? " on" : ""));
+              b.append(el("span", "d", sheet.rows[r][sheet.index.ix.desc]), el("span", "r", row === r ? "Selected" : ""), rowMeta(r));
+              b.onclick = () => { row = r; draw(); };
+              sh.appendChild(b);
+            });
+          } else sh.appendChild(rowMeta(it.rows[0]));
+        }
+        // quantities
+        const q = el("div", "qtyrow");
+        const cs = stepper("edCs", "Cases", e.cs), ea = stepper("edEa", "Each", e.ea);
+        q.append(cs.f, ea.f); sh.appendChild(q);
+        if ((e.cs || 0) > Core.HIGH_CASES && !e.highOk) sh.appendChild(el("div", "note warn", `Over ${Core.HIGH_CASES} cases. Saving confirms the count is right.`));
+        const acts = el("div", "toolbar");
+        const save = el("button", "btn primary", "Save"); const del = el("button", "btn danger", "Delete"); const cancel = el("button", "btn", "Cancel");
+        save.onclick = () => {
+          const num = (v) => (v.trim() === "" ? null : Math.max(0, parseFloat(v)));
+          e.cs = num(cs.inp.value); e.ea = num(ea.inp.value);
+          if (key !== e.key) { e.itemOk = true; }
+          e.key = key; e.label = label; e.row = row;
+          if (key && (!it || key === e.key)) e.itemOk = true;
+          if ((e.cs || 0) > Core.HIGH_CASES) e.highOk = true;
+          saveEntries(); close(); renderAll(); toast("Saved");
+        };
+        del.onclick = () => { entries = entries.filter((x) => x !== e); saveEntries(); close(); renderAll(); toast("Deleted"); };
+        cancel.onclick = close;
+        acts.append(save, del, cancel); sh.appendChild(acts);
+      };
+      draw();
+    });
+  }
+
+  // ---------- review ----------
+  function flagged() { return entries.filter((e) => Core.flags(e, sheet.index).length); }
+  function renderBadges() {
+    const n = sheet ? flagged().length : 0;
+    $("tabFlags").hidden = !n; $("tabFlags").textContent = n;
+  }
+  const WHY = {
+    unmatched: (e) => `Couldn't find “${e.spoken}” in this worksheet.`,
+    slot: () => "This item is in more than one slot. Pick which one gets the count.",
+    check: (e) => `Best guess for “${e.spoken}”. Confirm it's the right item.`,
+    noqty: () => "No count was heard for this item.",
+    high: (e) => `${fmt(e.cs)} cases is over the ${Core.HIGH_CASES}-case limit. Confirm or fix it.`,
+  };
+  function renderReview() {
+    const box = $("rvList"); box.replaceChildren();
+    if (!sheet) { box.appendChild(el("div", "empty", "Add a site on the Sites tab first.")); return; }
+    const t = totals();
+    $("rvCounted").textContent = t.size.toLocaleString();
+    $("rvRows").textContent = sheet.rows.length.toLocaleString();
+    const list = flagged();
+    $("rvFlags").textContent = list.length;
+    $("exportNote").textContent = list.length
+      ? `${list.length} ${list.length === 1 ? "entry needs" : "entries need"} a look. Lines with no item or no slot are left out of the export until you fix them.`
+      : "Fills Quantity and Break Quantity into this site's worksheet. Every other column and the row order stay exactly as uploaded.";
+    if (!list.length) { box.appendChild(el("div", "empty", entries.length ? "Nothing flagged. Everything is ready to export." : "Nothing counted yet at this site.")); return; }
+    const order = ["unmatched", "noqty", "slot", "check", "high"];
+    list.sort((a, b) => order.indexOf(Core.flags(a, sheet.index)[0]) - order.indexOf(Core.flags(b, sheet.index)[0]));
+    for (const e of list) {
+      const f = Core.flags(e, sheet.index);
+      const c = el("div", "rv" + (f.includes("unmatched") || f.includes("noqty") ? " bad" : ""));
+      const head = el("div", "toolbar"); head.style.justifyContent = "space-between";
+      head.append(el("h3", null, e.label || "“" + e.spoken + "”"), el("span", "pill", qtyText(e)));
+      c.appendChild(head);
+      const tg = el("div", "tags toolbar"); f.forEach((x) => tg.appendChild(el("span", "tag " + (x === "unmatched" || x === "noqty" ? "bad" : "flag"), FLAG_TEXT[x]))); c.appendChild(tg);
+      f.forEach((x) => c.appendChild(el("div", "why", WHY[x](e))));
+      const acts = el("div", "acts");
+      if (f.length === 1 && f[0] === "high") {
+        const ok = el("button", "btn primary small", "Count is right"); ok.onclick = () => { e.highOk = true; saveEntries(); renderAll(); }; acts.appendChild(ok);
+      }
+      if (f.length === 1 && f[0] === "check") {
+        const ok = el("button", "btn primary small", "Item is right"); ok.onclick = () => { e.itemOk = true; saveEntries(); renderAll(); }; acts.appendChild(ok);
+      }
+      const ed = el("button", "btn small" + (acts.childElementCount ? "" : " primary"), f.includes("slot") ? "Pick slot" : f.includes("unmatched") || f.includes("check") ? "Choose item" : "Edit");
+      ed.onclick = () => editEntry(e, { changeItem: f.includes("unmatched") || (f.includes("check") && !f.includes("slot")) });
+      acts.appendChild(ed);
+      c.appendChild(acts);
+      box.appendChild(c);
+    }
+  }
+
+  // ---------- export ----------
+  $("exportBtn").addEventListener("click", () => {
+    if (!sheet) return;
+    if (!window.XLSX) { toast("The spreadsheet tool didn't load. Check your connection and reload."); return; }
+    const t = totals(); const ix = sheet.index.ix;
+    const out = sheet.rows.map((r, i) => {
+      const row = r.slice(); const v = t.get(i);
+      if (v) {
+        if (v.hasCs && ix.qty >= 0) row[ix.qty] = v.cs;
+        if (v.hasEa && ix.bqty >= 0) row[ix.bqty] = v.ea;
+      }
+      return row;
+    });
+    const ws = XLSX.utils.aoa_to_sheet([sheet.headers, ...out]);
+    const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "Sheet1");
+    const s = activeSite(); const d = new Date().toISOString().slice(0, 10);
+    XLSX.writeFile(wb, `${s.name.replace(/[^\w\- ]+/g, "")} inventory ${d}.xlsx`);
+    toast(`Exported ${t.size} counted rows`);
+  });
+
+  // ---------- worksheet view ----------
+  const LIMIT = 150;
+  function renderRows() {
+    const box = $("rows"); box.replaceChildren();
+    if (!sheet) { box.appendChild(el("div", "empty", sites.length ? "Pick a site from the top bar." : "Add a site and its worksheet on the Sites tab.")); return; }
+    const { rows, index, repeats } = sheet, ix = index.ix, t = totals();
+    $("stRows").textContent = rows.length.toLocaleString();
+    $("stRepeat").textContent = [...repeats.values()].filter((v) => v > 1).length;
+    $("stFilled").textContent = t.size.toLocaleString();
+    $("sheetSub").textContent = `${activeSite().fileName || "Worksheet"}, every row in its original order.`;
+    const terms = norm($("q").value).split(" ").filter(Boolean), area = $("area").value;
+    const onlyRep = $("onlyRepeat").checked, onlyUn = $("onlyUncounted").checked;
+    const match = [];
+    rows.forEach((r, i) => {
+      if (area && r[ix.loc] !== area) return;
+      const multi = repeats.get(norm(r[ix.desc])) > 1;
+      if (onlyRep && !multi) return;
+      if (onlyUn && t.has(i)) return;
+      if (terms.length) { const hay = norm([r[ix.desc], r[ix.cust], r[ix.dist], r[ix.brand]].join(" ")); if (!terms.every((x) => hay.includes(x))) return; }
+      match.push([r, i, multi]);
+    });
+    if (!match.length) { box.appendChild(el("div", "empty", "No rows match. Clear the search or filters.")); return; }
+    for (const [r, i, multi] of match.slice(0, LIMIT)) {
+      const row = el("div", "row"), v = t.get(i);
+      row.appendChild(el("div", "desc", r[ix.desc] || "(no description)"));
+      const q = v ? [v.hasCs ? fmt(v.cs) + " cs" : "", v.hasEa ? fmt(v.ea) + " ea" : ""].filter(Boolean).join(" · ") : "—";
+      row.appendChild(el("div", "qty" + (v ? " filled" : ""), q));
+      const meta = rowMeta(i); meta.className = "meta"; meta.firstChild.textContent = "Row " + (i + 2);
+      if (multi) meta.appendChild(el("span", "tag flag", repeats.get(norm(r[ix.desc])) + " slots"));
+      row.appendChild(meta); box.appendChild(row);
+    }
+    if (match.length > LIMIT) box.appendChild(el("div", "more", `Showing ${LIMIT} of ${match.length.toLocaleString()} rows. Search to narrow it down.`));
+  }
+  let qT; $("q").addEventListener("input", () => { clearTimeout(qT); qT = setTimeout(renderRows, 120); });
+  ["area", "onlyRepeat", "onlyUncounted"].forEach((id) => $(id).addEventListener("change", renderRows));
+  $("countArea").addEventListener("change", (e) => { countArea = e.target.value; });
+
+  // ---------- sites ----------
+  let pending = null, replaceId = null;
+  const slug = (s) => (norm(s).replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "site").slice(0, 40);
+  function renderSites() {
+    const list = $("siteList"); list.replaceChildren();
+    if (!sites.length) { list.appendChild(el("div", "empty", "No sites yet. Add the first one below with its worksheet.")); return; }
+    for (const s of sites) {
+      const c = el("div", "card site-card" + (s.id === activeId ? " active" : ""));
+      c.append(el("div", "nm", s.name), s.id === activeId ? el("span", "badge-active", "Counting here") : el("span"));
+      c.appendChild(el("div", "info", `${s.rowCount.toLocaleString()} rows · ${s.fileName || "worksheet"}${s.uploadedAt ? " · uploaded " + new Date(s.uploadedAt).toLocaleDateString() : ""}`));
+      const acts = el("div", "acts");
+      if (s.id !== activeId) { const u = el("button", "btn primary", "Count here"); u.onclick = async () => { await setActive(s.id); show("count"); }; acts.appendChild(u); }
+      const r = el("button", "btn", "Replace worksheet"); r.onclick = () => startReplace(s); acts.appendChild(r);
+      const rn = el("button", "btn", "Rename"); rn.onclick = () => renameSite(s, c); acts.appendChild(rn);
+      if (s.id === activeId) { const nc = el("button", "btn danger", "Start a new count"); nc.onclick = () => confirmNewCount(s); acts.appendChild(nc); }
+      const rm = el("button", "btn danger", "Remove site"); rm.onclick = () => confirmRemove(s); acts.appendChild(rm);
+      c.appendChild(acts); list.appendChild(c);
+    }
+  }
+  function confirmBox(title, body, yes, run) {
+    openSheet(title, (sh, close) => {
+      sh.append(el("h2", null, title), el("p", "sub", body));
+      const a = el("div", "toolbar"); const y = el("button", "btn danger", yes); const n = el("button", "btn", "Keep it");
+      y.onclick = async () => { close(); await run(); }; n.onclick = close; a.append(y, n); sh.appendChild(a);
+    });
+  }
+  function confirmNewCount(s) {
+    confirmBox("Start a new count?", `This clears all ${entries.length} counted lines at ${s.name}. Export first if you still need them.`, "Clear counts", async () => {
+      entries = []; await idb.set("counts:" + s.id, []); renderAll(); toast("Counts cleared");
+    });
+  }
+  function confirmRemove(s) {
+    confirmBox("Remove " + s.name + "?", "This removes the site, its worksheet and its counts from this phone.", "Remove site", async () => {
+      sites = sites.filter((x) => x.id !== s.id); await saveSites(); await idb.del("site:" + s.id); await idb.del("counts:" + s.id);
+      if (activeId === s.id) { activeId = sites[0] ? sites[0].id : null; pref.set("activeSite", activeId || ""); await loadSite(); }
+      renderAll(); toast("Site removed");
+    });
+  }
+  function renameSite(s, card) {
+    const f = el("div", "field"); const inp = el("input"); inp.type = "text"; inp.value = s.name; inp.id = "rename-" + s.id;
+    const lb = el("label", null, "New name"); lb.htmlFor = inp.id; f.append(lb, inp);
+    const row = el("div", "toolbar"); const ok = el("button", "btn primary", "Save name"); const no = el("button", "btn", "Cancel");
+    row.append(ok, no); card.append(f, row); inp.focus();
+    no.onclick = renderSites;
+    ok.onclick = async () => { const name = inp.value.trim(); if (!name) return; s.name = name; sites.sort((a, b) => a.name.localeCompare(b.name)); await saveSites(); renderAll(); toast("Renamed"); };
+  }
+  function startReplace(s) {
+    replaceId = s.id; pending = null;
+    $("upTitle").textContent = "Replace worksheet for " + s.name;
+    $("nameField").hidden = true; $("cancelReplace").hidden = false;
+    $("file").value = ""; $("fileCheck").hidden = true; $("saveSite").disabled = true;
+    $("uploadCard").scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+  function resetUpload() {
+    replaceId = null; pending = null;
+    $("upTitle").textContent = "Add a site"; $("nameField").hidden = false; $("cancelReplace").hidden = true;
+    $("file").value = ""; $("newName").value = ""; $("fileCheck").hidden = true; $("saveSite").disabled = true;
+  }
+  $("cancelReplace").onclick = resetUpload;
+
+  $("file").addEventListener("change", async (ev) => {
+    const f = ev.target.files[0]; pending = null; $("saveSite").disabled = true;
+    const box = $("fileCheck"); box.hidden = !f; if (!f) return;
+    box.replaceChildren(el("span", null, "Reading " + f.name + "…"));
+    try {
+      if (!window.XLSX) throw new Error("The spreadsheet reader didn't load. Check your connection and reload the page.");
+      const wb = XLSX.read(await f.arrayBuffer(), { type: "array" });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const all = XLSX.utils.sheet_to_json(ws, { header: 1, raw: false, defval: "" });
+      const headers = (all[0] || []).map((h) => String(h).trim());
+      const rows = all.slice(1).map((r) => headers.map((_, i) => (r[i] == null ? "" : String(r[i])))).filter((r) => r.some((v) => v !== ""));
+      box.replaceChildren();
+      const idx = Core.buildIndex(headers, rows);
+      const missing = [["Item Description", idx.ix.desc], ["Quantity", idx.ix.qty]].filter(([, i]) => i < 0).map(([n]) => n);
+      if (missing.length) { box.appendChild(el("span", "err-t", `This file has no ${missing.join(" or ")} column in its first row. Upload the system-of-record worksheet with its header row intact.`)); return; }
+      if (!rows.length) { box.appendChild(el("span", "err-t", "This file has a header row but no item rows.")); return; }
+      pending = { headers, rows, fileName: f.name };
+      const rep = idx.items.filter((it) => it.rows.length > 1).length;
+      box.appendChild(el("span", "ok-t", `${rows.length.toLocaleString()} item rows · ${headers.length} columns from sheet “${wb.SheetNames[0]}”`));
+      box.appendChild(el("span", null, `${rep} items appear in more than one slot. When you count one of them, you'll pick the slot.`));
+      if (replaceId && entries.length && replaceId === activeId) box.appendChild(el("span", "err-t", `Replacing the worksheet clears the ${entries.length} counted lines at this site.`));
+      if (!replaceId && !$("newName").value.trim()) $("newName").value = f.name.replace(/\.(xlsx|xls|csv)$/i, "");
+      $("saveSite").disabled = false;
+    } catch (err) { box.replaceChildren(el("span", "err-t", err.message || "This file couldn't be read as a spreadsheet.")); }
+  });
+  $("saveSite").addEventListener("click", async () => {
+    if (!pending) return;
+    let meta;
+    if (replaceId) meta = sites.find((x) => x.id === replaceId);
+    else {
+      const name = $("newName").value.trim(); if (!name) { toast("Give the site a name first."); return; }
+      let id = slug(name), n = 2; while (sites.some((s) => s.id === id)) id = slug(name) + "-" + n++;
+      meta = { id, name }; sites.push(meta);
+    }
+    Object.assign(meta, { fileName: pending.fileName, rowCount: pending.rows.length, uploadedAt: new Date().toISOString() });
+    sites.sort((a, b) => a.name.localeCompare(b.name));
+    await idb.set("site:" + meta.id, { headers: pending.headers, rows: pending.rows });
+    if (replaceId) await idb.set("counts:" + meta.id, []);
+    await saveSites();
+    toast(replaceId ? "Worksheet replaced" : "Site added");
+    resetUpload(); await setActive(meta.id); show("count");
+  });
+
+  // ---------- hands-free microphone ----------
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  let rec = null, listening = false, wake = null, restartT;
+  function setMicUi() {
+    $("mic").classList.toggle("on", listening);
+    $("mic").setAttribute("aria-pressed", String(listening));
+    $("micLabel").textContent = listening ? "Listening" : "Start";
+  }
+  async function keepAwake(on) {
+    try { if (on && "wakeLock" in navigator) wake = await navigator.wakeLock.request("screen"); else if (wake) { await wake.release(); wake = null; } } catch {}
+  }
+  function startMic() {
+    if (!SR) return;
+    if (!sheet) { toast("Add a site with its worksheet first."); show("sites"); return; }
+    rec = new SR();
+    rec.lang = "en-US"; rec.continuous = true; rec.interimResults = true; rec.maxAlternatives = 1;
+    rec.onresult = (ev) => {
+      let interim = "";
+      for (let i = ev.resultIndex; i < ev.results.length; i++) {
+        const r = ev.results[i];
+        if (r.isFinal) { const txt = r[0].transcript; showHeard(txt, true); addSpoken(txt, "voice"); }
+        else interim += r[0].transcript;
+      }
+      if (interim) showHeard(interim, false);
+    };
+    rec.onerror = (ev) => {
+      if (ev.error === "not-allowed" || ev.error === "service-not-allowed") {
+        listening = false; setMicUi(); keepAwake(false);
+        $("heard").textContent = "The microphone is blocked. Allow microphone access for this site in your browser settings, then tap Start.";
+      } else if (ev.error === "audio-capture") {
+        listening = false; setMicUi(); $("heard").textContent = "No microphone was found on this device.";
+      }
+    };
+    rec.onend = () => { if (listening) { clearTimeout(restartT); restartT = setTimeout(() => { try { rec.start(); } catch {} }, 250); } };
+    try { rec.start(); listening = true; setMicUi(); keepAwake(true); $("heard").textContent = "Listening… say an item and its count."; }
+    catch { toast("Couldn't start the microphone. Try again."); }
+  }
+  function stopMic() {
+    listening = false; clearTimeout(restartT);
+    try { rec && rec.stop(); } catch {}
+    setMicUi(); keepAwake(false);
+    $("heard").textContent = "Paused. Tap Start to keep counting.";
+  }
+  function showHeard(txt, final) {
+    const h = $("heard"); h.replaceChildren();
+    if (final) { h.append("Got: "); h.appendChild(el("b", null, txt.trim())); } else h.textContent = txt;
+  }
+  if (!SR) {
+    $("mic").disabled = true; $("micLabel").textContent = "No mic";
+    $("heard").textContent = "This browser can't do hands-free speech. Use Chrome on Android or Safari on iPhone, or type counts below (the keyboard's dictation mic works too).";
+  }
+  $("mic").addEventListener("click", () => (listening ? stopMic() : startMic()));
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && listening) keepAwake(true); });
+  $("typeForm").addEventListener("submit", (ev) => { ev.preventDefault(); const v = $("typeIn").value.trim(); if (!v) return; addSpoken(v, "typed"); $("typeIn").value = ""; });
+
+  // ---------- boot ----------
+  function renderAll() { renderHeader(); renderSites(); renderEntries(); renderBadges(); if (!$("view-review").hidden) renderReview(); if (!$("view-sheet").hidden) renderRows(); }
+  (async () => {
+    sites = (await idb.get("sites")) || [];
+    if (!activeSite()) activeId = sites[0] ? sites[0].id : null;
+    await loadSite();
+    const v = pref.get("view");
+    renderAll();
+    show(!sites.length ? "sites" : ["count", "review", "sheet", "sites"].includes(v) ? v : "count");
+  })();
+})();
+</script>
+</body>
+</html>
